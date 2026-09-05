@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// Starting point only. This app currently checks roles in the UI, not on the server,
+// so anyone with your Firebase config technically has raw read/write access to Firestore
+// unless you restrict it here. At minimum:
+//   1. Turn on Firebase Authentication and require signed-in users for all access.
+//   2. Once you do, replace `true` below with `request.auth != null`.
+// For real tax/financial records, plan to move writes behind a server (e.g. Next.js API
+// routes or Cloud Functions) that validates each action server-side instead of trusting the client.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /pos_shared_storage/{docId} {
+      allow read, write: if true; // TODO: tighten before going live
+    }
+    match /pos_private_storage/{docId} {
+      allow read, write: if true; // TODO: tighten before going live
+    }
+  }
+}

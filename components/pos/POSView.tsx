@@ -1,0 +1,381 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { AlertTriangle, Check, Printer, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Badge, Field, Modal, btnPrimary, btnSecondary, inputCls } from "./ui";
+import { fmt, fmtQty, genId } from "@/lib/pos-constants";
+import type { AppState, Product, RolePermissions, Sale, SaleItem, Session, UpdateFn } from "@/types/pos";
+
+function ReceiptPrintable({ sale, locationName }: { sale: Sale | null; locationName: string }) {
+  if (!sale) return <div id="receipt-print-area" className="hidden print:block" />;
+  return (
+    <div id="receipt-print-area" className="hidden print:block font-mono text-xs p-4 w-[300px]">
+      <div className="text-center mb-2">
+        <div className="font-bold text-sm">DUKABOOK POS</div>
+        <div>{locationName}</div>
+        <div>Invoice #{sale.number}</div>
+        <div>{new Date(sale.timestamp).toLocaleString()}</div>
+      </div>
+      <div className="border-t border-b border-dashed border-black py-1 my-1">
+        {sale.items.map((it, i) => (
+          <div key={i} className="mb-1">
+            <div>{it.name}</div>
+            <div className="flex justify-between">
+              <span>{fmtQty(it.qty)} {it.unit} x {fmt(it.price)}</span>
+              <span>{fmt(it.lineTotal)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between font-bold"><span>TOTAL</span><span>{fmt(sale.total)}</span></div>
+      <div className="flex justify-between"><span>Payment</span><span>{sale.payment}</span></div>
+      <div className="mt-2 text-center border border-black p-2">
+        eTIMS: awaiting KRA connection.<br />No tax-compliant QR yet - see Settings.
+      </div>
+      <div className="text-center mt-2">Served by {sale.cashierName}</div>
+      <div className="text-center mt-1">Thank you for your business</div>
+    </div>
+  );
+}
+
+export function POSView({
+  appState, update, session, perms,
+}: {
+  appState: AppState;
+  update: UpdateFn;
+  session: Session;
+  perms: RolePermissions;
+}) {
+  const [query, setQuery] = useState("");
+  const [cart, setCart] = useState<SaleItem[]>([]);
+  const [payment, setPayment] = useState("Cash");
+  const [error, setError] = useState("");
+  const [lastSale, setLastSale] = useState<Sale | null>(null);
+  const [showReturn, setShowReturn] = useState(false);
+  const locId = session.locationId;
+  const locationName = appState.locations.find((l) => l.id === locId)?.name ?? "";
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [] as Product[];
+    return appState.products
+      .filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [query, appState.products]);
+
+  const stockOf = (p: Product) => p.stock[locId] || 0;
+
+  const addToCart = (p: Product) => {
+    setError("");
+    if (stockOf(p) <= 0) {
+      setError(`${p.name} is out of stock at ${locationName}.`);
+      return;
+    }
+    setCart((prev) => {
+      const existing = prev.find((c) => c.productId === p.id);
+      if (existing) {
+        return prev.map((c) => (c.productId === p.id ? { ...c, qty: c.qty + 1, lineTotal: (c.qty + 1) * c.price } : c));
+      }
+      return [...prev, { productId: p.id, code: p.code, name: p.name, unit: p.unit, qty: 1, price: p.sellPrice, lineTotal: p.sellPrice }];
+    });
+    setQuery("");
+  };
+
+  const setQty = (productId: string, qty: number) => {
+    setCart((prev) => prev.map((c) => (c.productId === productId ? { ...c, qty: Math.max(0, qty), lineTotal: Math.max(0, qty) * c.price } : c)));
+  };
+  const removeLine = (productId: string) => setCart((prev) => prev.filter((c) => c.productId !== productId));
+
+  const total = cart.reduce((s, c) => s + c.qty * c.price, 0);
+
+  const checkout = () => {
+    setError("");
+    if (cart.length === 0) return;
+    for (const c of cart) {
+      const p = appState.products.find((x) => x.id === c.productId);
+      if (!p || stockOf(p) < c.qty) {
+        setError(`Not enough stock for ${c.name}. Available: ${fmtQty(p ? stockOf(p) : 0)} ${c.unit}.`);
+        return;
+      }
+      if (c.qty <= 0) {
+        setError(`Quantity for ${c.name} must be greater than zero.`);
+        return;
+      }
+    }
+    let createdSale: Sale | null = null;
+    update((prev) => {
+      const invoiceNo = prev.nextInvoiceNo;
+      const products = prev.products.map((p) => {
+        const line = cart.find((c) => c.productId === p.id);
+        if (!line) return p;
+        return { ...p, stock: { ...p.stock, [locId]: (p.stock[locId] || 0) - line.qty } };
+      });
+      const sale: Sale = {
+        id: genId("sale"),
+        number: invoiceNo,
+        timestamp: Date.now(),
+        cashierId: session.userId,
+        cashierName: session.userName,
+        locationId: locId,
+        items: cart.map((c) => ({ ...c, lineTotal: c.qty * c.price })),
+        total,
+        payment,
+        status: "completed",
+      };
+      const movements = cart.map((c) => ({
+        id: genId("mv"), timestamp: Date.now(), type: "sale" as const, productId: c.productId,
+        productName: c.name, locationId: locId, qty: -c.qty, reason: `Sale #${invoiceNo}`, user: session.userName,
+      }));
+      createdSale = sale;
+      return {
+        ...prev,
+        products,
+        sales: [...prev.sales, sale],
+        stockMovements: [...prev.stockMovements, ...movements],
+        nextInvoiceNo: invoiceNo + 1,
+      };
+    });
+    if (createdSale) setLastSale(createdSale);
+    setCart([]);
+    setPayment("Cash");
+  };
+
+  const printReceipt = () => window.print();
+
+  return (
+    <div className="flex-1 flex overflow-hidden">
+      <ReceiptPrintable sale={lastSale} locationName={locationName} />
+      <div className="flex-1 flex flex-col p-6 overflow-y-auto print:hidden">
+        <div className="relative mb-4">
+          <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+          <input
+            className={`${inputCls} pl-9`}
+            placeholder="Search by product code or name..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            autoFocus
+          />
+          {results.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden">
+              {results.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => addToCart(p)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-emerald-50 text-left border-b border-slate-100 last:border-0"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-slate-800">{p.name}</div>
+                    <div className="text-xs text-slate-400">{p.code} &middot; {fmt(p.sellPrice)} / {p.unit}</div>
+                  </div>
+                  <Badge tone={stockOf(p) <= p.lowStockThreshold ? "amber" : "slate"}>
+                    {fmtQty(stockOf(p))} {p.unit}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {appState.products.slice(0, 12).map((p) => (
+            <button
+              key={p.id}
+              onClick={() => addToCart(p)}
+              className="text-left bg-white border border-slate-200 rounded-lg p-3 hover:border-emerald-400 hover:shadow-sm transition"
+            >
+              <div className="text-sm font-medium text-slate-800 truncate">{p.name}</div>
+              <div className="text-xs text-slate-400 mb-1">{p.code}</div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-emerald-700">{fmt(p.sellPrice)}</span>
+                <span className="text-xs text-slate-400">/{p.unit}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {perms.canReturn && (
+          <button onClick={() => setShowReturn(true)} className={`${btnSecondary} mt-6 self-start flex items-center gap-1.5`}>
+            <RotateCcw size={14} /> Process a return / refund
+          </button>
+        )}
+      </div>
+
+      <div className="w-96 shrink-0 bg-white border-l border-slate-200 flex flex-col print:hidden">
+        <div className="px-5 py-4 border-b border-slate-200">
+          <h2 className="font-semibold text-slate-800">Current sale</h2>
+          <p className="text-xs text-slate-400">{locationName}</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {cart.length === 0 && (
+            <p className="text-sm text-slate-400 mt-6 text-center">Cart is empty. Search or tap a product to add it.</p>
+          )}
+          {cart.map((c) => (
+            <div key={c.productId} className="flex items-center gap-2 py-2 border-b border-slate-100">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-slate-800 truncate">{c.name}</div>
+                <div className="text-xs text-slate-400">{fmt(c.price)} / {c.unit}</div>
+              </div>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={c.qty}
+                onChange={(e) => setQty(c.productId, parseFloat(e.target.value) || 0)}
+                className="w-16 border border-slate-300 rounded px-1.5 py-1 text-sm text-right"
+              />
+              <div className="w-20 text-right text-sm font-medium">{fmt(c.qty * c.price)}</div>
+              <button onClick={() => removeLine(c.productId)} className="text-slate-300 hover:text-rose-500">
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-slate-200 px-5 py-4">
+          {error && (
+            <div className="bg-rose-50 text-rose-700 text-xs rounded-md px-3 py-2 mb-3 flex items-center gap-1.5">
+              <AlertTriangle size={13} /> {error}
+            </div>
+          )}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-slate-500 text-sm">Total</span>
+            <span className="text-2xl font-semibold text-slate-800">{fmt(total)}</span>
+          </div>
+          <Field label="Payment method">
+            <select className={inputCls} value={payment} onChange={(e) => setPayment(e.target.value)}>
+              <option>Cash</option>
+              <option>M-Pesa</option>
+              <option>Card</option>
+              <option>Bank transfer</option>
+            </select>
+          </Field>
+          <button onClick={checkout} disabled={cart.length === 0} className={`${btnPrimary} w-full`}>
+            Charge {fmt(total)}
+          </button>
+          {lastSale && (
+            <button onClick={printReceipt} className={`${btnSecondary} w-full mt-2 flex items-center justify-center gap-1.5`}>
+              <Printer size={14} /> Print last receipt (#{lastSale.number})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showReturn && (
+        <ReturnModal appState={appState} update={update} session={session} onClose={() => setShowReturn(false)} />
+      )}
+    </div>
+  );
+}
+
+function ReturnModal({
+  appState, update, session, onClose,
+}: {
+  appState: AppState;
+  update: UpdateFn;
+  session: Session;
+  onClose: () => void;
+}) {
+  const [invoiceNo, setInvoiceNo] = useState("");
+  const [sale, setSale] = useState<Sale | null>(null);
+  const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [reason, setReason] = useState("Customer return");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const find = () => {
+    const s = appState.sales.find((x) => String(x.number) === invoiceNo.trim());
+    if (!s) {
+      setError("No sale found with that invoice number.");
+      setSale(null);
+      return;
+    }
+    setError("");
+    setSale(s);
+    setQtys(Object.fromEntries(s.items.map((it) => [it.productId, 0])));
+  };
+
+  const confirmReturn = () => {
+    if (!sale) return;
+    const returningItems = sale.items.filter((it) => (qtys[it.productId] || 0) > 0);
+    if (returningItems.length === 0) {
+      setError("Enter a quantity to return for at least one item.");
+      return;
+    }
+    for (const it of returningItems) {
+      if (qtys[it.productId] > it.qty) {
+        setError(`Cannot return more than sold for ${it.name}.`);
+        return;
+      }
+    }
+    update((prev) => {
+      const products = prev.products.map((p) => {
+        const ret = returningItems.find((it) => it.productId === p.id);
+        if (!ret) return p;
+        return { ...p, stock: { ...p.stock, [sale.locationId]: (p.stock[sale.locationId] || 0) + qtys[p.id] } };
+      });
+      const movements = returningItems.map((it) => ({
+        id: genId("mv"), timestamp: Date.now(), type: "return" as const, productId: it.productId,
+        productName: it.name, locationId: sale.locationId, qty: qtys[it.productId],
+        reason: `${reason} (Sale #${sale.number})`, user: session.userName,
+      }));
+      const sales = prev.sales.map((s) => (s.id === sale.id ? { ...s, status: "returned" as const } : s));
+      return { ...prev, products, sales, stockMovements: [...prev.stockMovements, ...movements] };
+    });
+    setDone(true);
+  };
+
+  return (
+    <Modal title="Process a return" onClose={onClose} wide>
+      {done ? (
+        <div className="text-center py-4">
+          <Check className="mx-auto text-emerald-600 mb-2" size={32} />
+          <p className="text-slate-700">Return processed and stock updated.</p>
+          <button onClick={onClose} className={`${btnPrimary} mt-4`}>Close</button>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2 mb-4">
+            <input className={inputCls} placeholder="Invoice number, e.g. 1001" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} />
+            <button onClick={find} className={btnSecondary}>Find</button>
+          </div>
+          {error && <div className="bg-rose-50 text-rose-700 text-sm rounded-md px-3 py-2 mb-3">{error}</div>}
+          {sale && (
+            <>
+              <table className="w-full text-sm mb-3">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b border-slate-200">
+                    <th className="py-1.5">Item</th><th>Sold</th><th>Return qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sale.items.map((it) => (
+                    <tr key={it.productId} className="border-b border-slate-100">
+                      <td className="py-1.5">{it.name}</td>
+                      <td>{fmtQty(it.qty)} {it.unit}</td>
+                      <td>
+                        <input
+                          type="number" step="any" min="0" max={it.qty}
+                          className="w-20 border border-slate-300 rounded px-1.5 py-1 text-right"
+                          value={qtys[it.productId] || 0}
+                          onChange={(e) => setQtys((q) => ({ ...q, [it.productId]: parseFloat(e.target.value) || 0 }))}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Field label="Reason">
+                <select className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)}>
+                  <option>Customer return</option>
+                  <option>Wrong item sold</option>
+                  <option>Damaged / faulty</option>
+                  <option>Other</option>
+                </select>
+              </Field>
+              <button onClick={confirmReturn} className={`${btnPrimary} w-full mt-2`}>Confirm return</button>
+            </>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
