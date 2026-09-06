@@ -2,29 +2,46 @@
 
 import { useState } from "react";
 import { AlertTriangle, Store } from "lucide-react";
+import { signInWithEmailAndPassword, type AuthError } from "firebase/auth";
+import { getFirebaseAuth } from "@/lib/firebase";
 import { Field, btnPrimary, inputCls } from "./ui";
-import type { UserAccount } from "@/types/pos";
 
-export function LoginScreen({
-  users, onLogin,
-}: {
-  users: UserAccount[];
-  onLogin: (user: UserAccount) => void;
-}) {
-  const [username, setUsername] = useState("");
+function friendlyAuthError(err: unknown): string {
+  const code = (err as AuthError)?.code ?? "";
+  switch (code) {
+    case "auth/invalid-email":
+      return "That doesn't look like a valid email address.";
+    case "auth/user-disabled":
+      return "This account has been disabled. Contact your admin.";
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+    case "auth/invalid-credential":
+      return "Incorrect email or password.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Wait a moment and try again.";
+    default:
+      return "Couldn't sign in. Check your connection and try again.";
+  }
+}
+
+export function LoginScreen() {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = users.find(
-      (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.active !== false
-    );
-    if (!user || user.password !== password) {
-      setError("Incorrect username or password.");
-      return;
+    setError("");
+    setSubmitting(true);
+    try {
+      await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
+      // On success, onAuthStateChanged (via useAuth) picks this up and PosApp moves on.
+    } catch (err) {
+      setError(friendlyAuthError(err));
+    } finally {
+      setSubmitting(false);
     }
-    onLogin(user);
   };
 
   return (
@@ -44,16 +61,30 @@ export function LoginScreen({
               <AlertTriangle size={15} /> {error}
             </div>
           )}
-          <Field label="Username">
-            <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+          <Field label="Email">
+            <input
+              type="email"
+              className={inputCls}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoFocus
+              autoComplete="username"
+            />
           </Field>
           <Field label="Password">
-            <input type="password" className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input
+              type="password"
+              className={inputCls}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
           </Field>
-          <button type="submit" className={`${btnPrimary} w-full mt-2`}>Sign in</button>
+          <button type="submit" disabled={submitting} className={`${btnPrimary} w-full mt-2`}>
+            {submitting ? "Signing in..." : "Sign in"}
+          </button>
           <div className="mt-5 pt-4 border-t border-slate-100 text-xs text-slate-400 leading-relaxed">
-            Demo accounts: owner/owner123, manager/manager123, storekeeper/store123, cashier/cashier123.
-            Change these before real use.
+            No account yet? Ask your business owner or manager to add you from the Users screen.
           </div>
         </form>
       </div>

@@ -80,12 +80,6 @@ export function seedState(): AppState {
       { id: loc1, name: "Main Store" },
       { id: loc2, name: "Branch - Eldoret Town" },
     ],
-    users: [
-      { id: genId("usr"), username: "owner", password: "owner123", name: "Business Owner", role: "owner", locationId: loc1, active: true },
-      { id: genId("usr"), username: "manager", password: "manager123", name: "Store Manager", role: "manager", locationId: loc1, active: true },
-      { id: genId("usr"), username: "storekeeper", password: "store123", name: "Storekeeper", role: "storekeeper", locationId: loc2, active: true },
-      { id: genId("usr"), username: "cashier", password: "cashier123", name: "Front Cashier", role: "cashier", locationId: loc1, active: true },
-    ],
     products,
     sales: [],
     purchases: [],

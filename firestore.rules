@@ -1,20 +1,47 @@
 rules_version = '2';
 
-// Starting point only. This app currently checks roles in the UI, not on the server,
-// so anyone with your Firebase config technically has raw read/write access to Firestore
-// unless you restrict it here. At minimum:
-//   1. Turn on Firebase Authentication and require signed-in users for all access.
-//   2. Once you do, replace `true` below with `request.auth != null`.
-// For real tax/financial records, plan to move writes behind a server (e.g. Next.js API
-// routes or Cloud Functions) that validates each action server-side instead of trusting the client.
+// Staff accounts (role, name, store assignment) live in `pos_staff/{uid}`, one document per
+// Firebase Auth user, keyed by their uid. Only the server (via the Admin SDK, which bypasses
+// these rules entirely) can create or edit staff documents - that's what /api/staff is for.
+// This stops a signed-in cashier from promoting themselves to owner by writing Firestore
+// directly instead of going through the app.
+//
+// Business data (products, sales, purchases, stock movements, locations) lives in one shared
+// document in `pos_shared_storage`. Any signed-in, active staff member can read and write it -
+// this is what lets a cashier's checkout deduct stock and log a sale. Note this means role
+// restrictions on WHAT gets changed (e.g. "only owner/manager can edit cost prices") are only
+// enforced by the app's UI, not by these rules, because it's one shared document rather than
+// separate per-entity collections. If you need that level of enforcement at the database layer,
+// the next step is splitting `pos_shared_storage` into per-collection documents (products/{id},
+// sales/{id}, etc.) with field-level rules per collection - ask if you want help with that.
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /pos_shared_storage/{docId} {
-      allow read, write: if true; // TODO: tighten before going live
+    function isSignedIn() {
+      return request.auth != null;
     }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/pos_staff/$(request.auth.uid)).data;
+    }
+
+    function isActiveStaff() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/pos_staff/$(request.auth.uid))
+        && myProfile().active != false;
+    }
+
+    match /pos_staff/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false; // all writes go through /api/staff (Admin SDK), never the client
+    }
+
+    match /pos_shared_storage/{docId} {
+      allow read, write: if isActiveStaff();
+    }
+
     match /pos_private_storage/{docId} {
-      allow read, write: if true; // TODO: tighten before going live
+      allow read, write: if isSignedIn();
     }
   }
 }

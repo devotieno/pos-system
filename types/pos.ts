@@ -35,16 +35,23 @@ export interface Location {
   name: string;
 }
 
-export interface UserAccount {
-  id: string;
-  username: string;
-  /** Plaintext for demo purposes only — see README for why this must change before real use. */
-  password: string;
+/**
+ * A staff member's profile, stored in the `pos_staff` Firestore collection keyed by their
+ * Firebase Auth uid. Credentials (the password) live in Firebase Authentication itself, not
+ * here - this is just role/store assignment plus a display name.
+ */
+export interface StaffProfile {
   name: string;
+  email: string;
   role: Role;
-  /** The location/branch this user is assigned to. Set by an admin when creating the account. */
+  /** The location/branch this user is assigned to. Set by an admin/manager when creating the account. */
   locationId: string;
-  active?: boolean;
+  active: boolean;
+}
+
+/** A staff profile plus the Firebase Auth uid it's keyed by - what the app actually works with. */
+export interface StaffRecord extends StaffProfile {
+  uid: string;
 }
 
 export interface Product {
@@ -127,7 +134,6 @@ export interface EtimsSettings {
 
 export interface AppState {
   locations: Location[];
-  users: UserAccount[];
   products: Product[];
   sales: Sale[];
   purchases: Purchase[];
