@@ -51,7 +51,7 @@ export function LoginScreen() {
           <div className="bg-emerald-600 text-white p-2 rounded-lg">
             <Store size={22} />
           </div>
-          <span className="text-xl font-semibold text-slate-800">DukaBook POS</span>
+          <span className="text-xl font-semibold text-slate-800">e-pos(Ali's)</span>
         </div>
         <form onSubmit={submit} className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
           <h1 className="text-lg font-semibold text-slate-800 mb-1">Sign in</h1>

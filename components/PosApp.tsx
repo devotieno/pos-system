@@ -77,7 +77,7 @@ export default function PosApp() {
     }
   }, [staffReady, profile, user, view]);
 
-  if (authLoading) return <FullScreenMessage>Loading DukaBook POS...</FullScreenMessage>;
+  if (authLoading) return <FullScreenMessage>Loading e-pos(Ali's)...</FullScreenMessage>;
   if (!user) return <LoginScreen />;
   if (profileLoading) return <FullScreenMessage>Loading your account...</FullScreenMessage>;
   if (notFound || !profile) {
@@ -92,7 +92,7 @@ export default function PosApp() {
     return <NoAccessScreen email={user.email} reason="Your account has been disabled. Contact your admin." />;
   }
   if (stateLoading || !state || view === null) {
-    return <FullScreenMessage>Loading DukaBook POS...</FullScreenMessage>;
+    return <FullScreenMessage>Loading e-pos(Ali's)...</FullScreenMessage>;
   }
 
   const session: Session = { userId: user.uid, userName: profile.name, role: profile.role, locationId: profile.locationId };

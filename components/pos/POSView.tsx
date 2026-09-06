@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, Check, Printer, RotateCcw, Search, Trash2 } from "lucide-react";
 import { Badge, Field, Modal, btnPrimary, btnSecondary, inputCls } from "./ui";
 import { fmt, fmtQty, genId } from "@/lib/pos-constants";
-import type { AppState, Product, RolePermissions, Sale, SaleItem, Session, UpdateFn } from "@/types/pos";
+import type { AppState, Product, ReturnReason, RolePermissions, Sale, SaleItem, Session, UpdateFn } from "@/types/pos";
 
 function ReceiptPrintable({ sale, locationName }: { sale: Sale | null; locationName: string }) {
   if (!sale) return <div id="receipt-print-area" className="hidden print:block" />;
   return (
     <div id="receipt-print-area" className="hidden print:block font-mono text-xs p-4 w-[300px]">
       <div className="text-center mb-2">
-        <div className="font-bold text-sm">DUKABOOK POS</div>
+        <div className="font-bold text-sm">E-POS (ALI'S)</div>
         <div>{locationName}</div>
         <div>Invoice #{sale.number}</div>
         <div>{new Date(sale.timestamp).toLocaleString()}</div>
@@ -121,6 +121,7 @@ export function POSView({
         total,
         payment,
         status: "completed",
+        refundedTotal: 0,
       };
       const movements = cart.map((c) => ({
         id: genId("mv"), timestamp: Date.now(), type: "sale" as const, productId: c.productId,
@@ -277,14 +278,25 @@ function ReturnModal({
   const [invoiceNo, setInvoiceNo] = useState("");
   const [sale, setSale] = useState<Sale | null>(null);
   const [qtys, setQtys] = useState<Record<string, number>>({});
-  const [reason, setReason] = useState("Customer return");
+  const [reason, setReason] = useState<ReturnReason>("Customer return");
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+
+  // Damaged/faulty goods still get refunded to the customer, but aren't put back into
+  // sellable stock - a wrong-item-sold or plain customer return goes right back on the shelf.
+  const restocks = reason !== "Damaged / faulty";
+
+  const remainingOf = (it: SaleItem) => it.qty - (it.returnedQty || 0);
 
   const find = () => {
     const s = appState.sales.find((x) => String(x.number) === invoiceNo.trim());
     if (!s) {
       setError("No sale found with that invoice number.");
+      setSale(null);
+      return;
+    }
+    if (s.items.every((it) => remainingOf(it) <= 0)) {
+      setError(`Sale #${s.number} has already been fully returned.`);
       setSale(null);
       return;
     }
@@ -301,23 +313,42 @@ function ReturnModal({
       return;
     }
     for (const it of returningItems) {
-      if (qtys[it.productId] > it.qty) {
-        setError(`Cannot return more than sold for ${it.name}.`);
+      if (qtys[it.productId] > remainingOf(it)) {
+        setError(`Cannot return more than the ${fmtQty(remainingOf(it))} ${it.unit} still returnable for ${it.name}.`);
         return;
       }
     }
+    const refundAmount = returningItems.reduce((s, it) => s + qtys[it.productId] * it.price, 0);
+
     update((prev) => {
       const products = prev.products.map((p) => {
         const ret = returningItems.find((it) => it.productId === p.id);
-        if (!ret) return p;
+        if (!ret || !restocks) return p; // damaged/faulty: item is written off, not resellable
         return { ...p, stock: { ...p.stock, [sale.locationId]: (p.stock[sale.locationId] || 0) + qtys[p.id] } };
       });
+
       const movements = returningItems.map((it) => ({
-        id: genId("mv"), timestamp: Date.now(), type: "return" as const, productId: it.productId,
-        productName: it.name, locationId: sale.locationId, qty: qtys[it.productId],
-        reason: `${reason} (Sale #${sale.number})`, user: session.userName,
+        id: genId("mv"), timestamp: Date.now(),
+        type: restocks ? ("return" as const) : ("adjustment" as const),
+        productId: it.productId, productName: it.name, locationId: sale.locationId,
+        qty: restocks ? qtys[it.productId] : 0,
+        reason: restocks
+          ? `${reason} (Sale #${sale.number})`
+          : `Damaged/faulty return - refunded but written off, not restocked (Sale #${sale.number})`,
+        user: session.userName,
       }));
-      const sales = prev.sales.map((s) => (s.id === sale.id ? { ...s, status: "returned" as const } : s));
+
+      const sales = prev.sales.map((s) => {
+        if (s.id !== sale.id) return s;
+        const items = s.items.map((it) => {
+          const ret = returningItems.find((r) => r.productId === it.productId);
+          return ret ? { ...it, returnedQty: (it.returnedQty || 0) + qtys[it.productId] } : it;
+        });
+        const refundedTotal = (s.refundedTotal || 0) + refundAmount;
+        const fullyReturned = items.every((it) => remainingOf(it) <= 0);
+        return { ...s, items, refundedTotal, status: fullyReturned ? ("returned" as const) : ("partially_returned" as const) };
+      });
+
       return { ...prev, products, sales, stockMovements: [...prev.stockMovements, ...movements] };
     });
     setDone(true);
@@ -343,34 +374,44 @@ function ReturnModal({
               <table className="w-full text-sm mb-3">
                 <thead>
                   <tr className="text-left text-slate-500 border-b border-slate-200">
-                    <th className="py-1.5">Item</th><th>Sold</th><th>Return qty</th>
+                    <th className="py-1.5">Item</th><th>Sold</th><th>Already returned</th><th>Return qty</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sale.items.map((it) => (
-                    <tr key={it.productId} className="border-b border-slate-100">
-                      <td className="py-1.5">{it.name}</td>
-                      <td>{fmtQty(it.qty)} {it.unit}</td>
-                      <td>
-                        <input
-                          type="number" step="any" min="0" max={it.qty}
-                          className="w-20 border border-slate-300 rounded px-1.5 py-1 text-right"
-                          value={qtys[it.productId] || 0}
-                          onChange={(e) => setQtys((q) => ({ ...q, [it.productId]: parseFloat(e.target.value) || 0 }))}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {sale.items.map((it) => {
+                    const remaining = remainingOf(it);
+                    return (
+                      <tr key={it.productId} className="border-b border-slate-100">
+                        <td className="py-1.5">{it.name}</td>
+                        <td>{fmtQty(it.qty)} {it.unit}</td>
+                        <td className="text-slate-400">{fmtQty(it.returnedQty || 0)} {it.unit}</td>
+                        <td>
+                          <input
+                            type="number" step="any" min="0" max={remaining}
+                            disabled={remaining <= 0}
+                            className="w-20 border border-slate-300 rounded px-1.5 py-1 text-right disabled:bg-slate-50 disabled:text-slate-300"
+                            value={qtys[it.productId] || 0}
+                            onChange={(e) => setQtys((q) => ({ ...q, [it.productId]: parseFloat(e.target.value) || 0 }))}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <Field label="Reason">
-                <select className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)}>
+                <select className={inputCls} value={reason} onChange={(e) => setReason(e.target.value as ReturnReason)}>
                   <option>Customer return</option>
                   <option>Wrong item sold</option>
                   <option>Damaged / faulty</option>
                   <option>Other</option>
                 </select>
               </Field>
+              <p className="text-xs rounded-md px-3 py-2 mb-1 bg-slate-50 text-slate-500">
+                {restocks
+                  ? "The returned quantity goes back into sellable stock at this location."
+                  : "The customer is still refunded, but this quantity will NOT be added back to sellable stock - it's recorded as written off."}
+              </p>
               <button onClick={confirmReturn} className={`${btnPrimary} w-full mt-2`}>Confirm return</button>
             </>
           )}

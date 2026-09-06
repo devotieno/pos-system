@@ -75,9 +75,13 @@ export interface SaleItem {
   qty: number;
   price: number;
   lineTotal: number;
+  /** How much of this line has already been returned/refunded across one or more return transactions. */
+  returnedQty?: number;
 }
 
 export type SaleStatus = "completed" | "returned" | "partially_returned";
+
+export type ReturnReason = "Customer return" | "Wrong item sold" | "Damaged / faulty" | "Other";
 
 export interface Sale {
   id: string;
@@ -90,6 +94,8 @@ export interface Sale {
   total: number;
   payment: string;
   status: SaleStatus;
+  /** Cumulative amount refunded so far across one or more return transactions. */
+  refundedTotal?: number;
 }
 
 export interface PurchaseItem {

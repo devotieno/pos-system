@@ -44,11 +44,14 @@ export function ReportsView({
     const matchesPayment = paymentFilter === "all" || s.payment === paymentFilter;
     const pq = productQuery.trim().toLowerCase();
     const matchesProduct = !pq || s.items.some((it) => it.name.toLowerCase().includes(pq) || (it.code ?? "").toLowerCase().includes(pq));
-    return d >= from && d <= to && s.status !== "returned" && matchesInvoice && matchesCashier && matchesPayment && matchesProduct;
+    return d >= from && d <= to && matchesInvoice && matchesCashier && matchesPayment && matchesProduct;
   });
-  const revenue = salesInRange.reduce((s, x) => s + x.total, 0);
+  // Net revenue per sale = total charged minus whatever's been refunded so far. A partial
+  // return only reduces revenue by the refunded portion, not the whole invoice.
+  const netOf = (s: (typeof salesInRange)[number]) => s.total - (s.refundedTotal || 0);
+  const revenue = salesInRange.reduce((s, x) => s + netOf(x), 0);
   const byCashier: Record<string, number> = {};
-  salesInRange.forEach((s) => { byCashier[s.cashierName] = (byCashier[s.cashierName] || 0) + s.total; });
+  salesInRange.forEach((s) => { byCashier[s.cashierName] = (byCashier[s.cashierName] || 0) + netOf(s); });
 
   const lowStock: { p: Product; l: Location; qty: number }[] = appState.products.flatMap((p) =>
     visibleLocations
@@ -127,7 +130,10 @@ export function ReportsView({
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Invoice</th><th className="px-4 py-2.5 font-medium">Time</th>
                   <th className="px-4 py-2.5 font-medium">Products</th>
-                  <th className="px-4 py-2.5 font-medium">Cashier</th><th className="px-4 py-2.5 font-medium">Payment</th>
+                  <th className="px-4 py-2.5 font-medium">Cashier</th>
+                  <th className="px-4 py-2.5 font-medium">Location</th>
+                  <th className="px-4 py-2.5 font-medium">Payment</th>
+                  <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 font-medium text-right">Total</th>
                 </tr>
               </thead>
@@ -140,11 +146,22 @@ export function ReportsView({
                       {s.items.map((i) => `${i.name} (${i.code ?? "-"})`).join(", ")}
                     </td>
                     <td className="px-4 py-2.5">{s.cashierName}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{appState.locations.find((l) => l.id === s.locationId)?.name ?? "-"}</td>
                     <td className="px-4 py-2.5 text-slate-500">{s.payment}</td>
-                    <td className="px-4 py-2.5 text-right font-medium">{fmt(s.total)}</td>
+                    <td className="px-4 py-2.5">
+                      {s.status === "returned" && <Badge tone="rose">Returned</Badge>}
+                      {s.status === "partially_returned" && <Badge tone="amber">Partial return</Badge>}
+                      {s.status === "completed" && <Badge tone="emerald">Completed</Badge>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-medium">
+                      {fmt(netOf(s))}
+                      {(s.refundedTotal || 0) > 0 && (
+                        <div className="text-xs text-slate-400 font-normal">of {fmt(s.total)}</div>
+                      )}
+                    </td>
                   </tr>
                 ))}
-                {salesInRange.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No sales match your filters.</td></tr>}
+                {salesInRange.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No sales match your filters.</td></tr>}
               </tbody>
             </table>
           </div>

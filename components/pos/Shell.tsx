@@ -43,7 +43,7 @@ export function Sidebar({
         <div className="bg-emerald-600 text-white p-1.5 rounded-md">
           <Store size={18} />
         </div>
-        <span className="text-white font-semibold text-sm">DukaBook POS</span>
+        <span className="text-white font-semibold text-sm">e-pos(Ali's)</span>
       </div>
       <nav className="flex-1 py-3 px-2 space-y-1">
         {NAV_ITEMS.filter((n) => perms[n.need]).map((n) => {

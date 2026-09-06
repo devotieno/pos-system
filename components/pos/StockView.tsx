@@ -162,7 +162,7 @@ export function StockView({
               {[...visibleMovements].reverse().slice(0, 200).map((m) => (
                 <tr key={m.id} className="border-t border-slate-100">
                   <td className="px-4 py-2.5 text-slate-500">{new Date(m.timestamp).toLocaleString()}</td>
-                  <td className="px-4 py-2.5"><Badge tone={m.qty < 0 ? "rose" : "emerald"}>{m.type}</Badge></td>
+                  <td className="px-4 py-2.5"><Badge tone={m.qty < 0 ? "rose" : m.qty > 0 ? "emerald" : "slate"}>{m.type}</Badge></td>
                   <td className="px-4 py-2.5 font-medium text-slate-800">{m.productName}</td>
                   <td className="px-4 py-2.5 text-slate-500">
                     {appState.locations.find((l) => l.id === m.locationId)?.name}
