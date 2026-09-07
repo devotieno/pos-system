@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { storage } from "@/lib/storage";
-import { STORAGE_KEY, seedState } from "@/lib/pos-constants";
+import { STORAGE_KEY, normalizeState, seedState } from "@/lib/pos-constants";
 import type { AppState } from "@/types/pos";
 
 export interface UseAppStateResult {
@@ -30,7 +30,7 @@ export function useAppState(enabled: boolean): UseAppStateResult {
     (async () => {
       try {
         const res = await storage.get(STORAGE_KEY, true);
-        if (!cancelled) setState(JSON.parse(res.value) as AppState);
+        if (!cancelled) setState(normalizeState(JSON.parse(res.value)));
       } catch {
         const seed = seedState();
         if (!cancelled) setState(seed);

@@ -88,3 +88,39 @@ export function seedState(): AppState {
     etims: { connected: false, kraPin: "", deviceId: "" },
   };
 }
+
+/**
+ * Fills in defaults for fields that didn't exist in older saved data (e.g. sales recorded
+ * before split payments/discounts were added only had a single `payment: string`, not a
+ * `payments` array). Run this on anything loaded from storage before using it, so the rest of
+ * the app can assume every field is always present without extra `?.` checks everywhere.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function normalizeState(raw: any): AppState {
+  const sales = Array.isArray(raw?.sales)
+    ? raw.sales.map((s: any) => ({
+        ...s,
+        subtotal: typeof s.subtotal === "number" ? s.subtotal : (s.total ?? 0),
+        discount: s.discount ?? null,
+        total: s.total ?? 0,
+        payments: Array.isArray(s.payments)
+          ? s.payments
+          : s.payment
+            ? [{ method: s.payment, amount: s.total ?? 0 }]
+            : [],
+        status: s.status ?? "completed",
+        refundedTotal: typeof s.refundedTotal === "number" ? s.refundedTotal : 0,
+        items: Array.isArray(s.items) ? s.items.map((it: any) => ({ ...it, returnedQty: it.returnedQty ?? 0 })) : [],
+      }))
+    : [];
+
+  return {
+    locations: Array.isArray(raw?.locations) ? raw.locations : [],
+    products: Array.isArray(raw?.products) ? raw.products : [],
+    sales,
+    purchases: Array.isArray(raw?.purchases) ? raw.purchases : [],
+    stockMovements: Array.isArray(raw?.stockMovements) ? raw.stockMovements : [],
+    nextInvoiceNo: typeof raw?.nextInvoiceNo === "number" ? raw.nextInvoiceNo : 1001,
+    etims: raw?.etims ?? { connected: false, kraPin: "", deviceId: "" },
+  };
+}

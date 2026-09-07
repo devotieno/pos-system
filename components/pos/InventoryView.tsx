@@ -139,6 +139,7 @@ export function InventoryView({
         </div>
       </div>
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-500 text-left">
             <tr>
@@ -182,6 +183,7 @@ export function InventoryView({
             )}
           </tbody>
         </table>
+        </div>
       </div>
       {editing && (
         <ProductModal

@@ -3,8 +3,12 @@
 import { useState } from "react";
 import { Boxes, ClipboardList, ShoppingCart, TrendingUp } from "lucide-react";
 import { Badge, Field, StatCard, inputCls } from "./ui";
+import { SaleDetailModal } from "./SaleDetailModal";
 import { fmt, fmtQty, todayStr } from "@/lib/pos-constants";
-import type { AppState, Location, Product, RolePermissions, Session } from "@/types/pos";
+import type { AppState, Location, Product, RolePermissions, Sale, Session } from "@/types/pos";
+
+const fmtDateTime = (ts: number) =>
+  new Date(ts).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 type Tab = "sales" | "stock" | "low" | "purchases";
 
@@ -23,6 +27,7 @@ export function ReportsView({
   const [productQuery, setProductQuery] = useState("");
   const [cashierFilter, setCashierFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
+  const [viewingSale, setViewingSale] = useState<Sale | null>(null);
 
   const visibleLocations: Location[] = perms.multiLocation
     ? appState.locations
@@ -35,13 +40,13 @@ export function ReportsView({
   );
 
   const cashierOptions = Array.from(new Set(salesInScope.map((s) => s.cashierName))).sort();
-  const paymentOptions = Array.from(new Set(salesInScope.map((s) => s.payment))).sort();
+  const paymentOptions = Array.from(new Set(salesInScope.flatMap((s) => s.payments.map((p) => p.method)))).sort();
 
   const salesInRange = salesInScope.filter((s) => {
     const d = new Date(s.timestamp).toISOString().slice(0, 10);
     const matchesInvoice = !invoiceQuery.trim() || String(s.number).includes(invoiceQuery.trim());
     const matchesCashier = cashierFilter === "all" || s.cashierName === cashierFilter;
-    const matchesPayment = paymentFilter === "all" || s.payment === paymentFilter;
+    const matchesPayment = paymentFilter === "all" || s.payments.some((p) => p.method === paymentFilter);
     const pq = productQuery.trim().toLowerCase();
     const matchesProduct = !pq || s.items.some((it) => it.name.toLowerCase().includes(pq) || (it.code ?? "").toLowerCase().includes(pq));
     return d >= from && d <= to && matchesInvoice && matchesCashier && matchesPayment && matchesProduct;
@@ -125,29 +130,65 @@ export function ReportsView({
             <StatCard label="Avg. sale" value={fmt(salesInRange.length ? revenue / salesInRange.length : 0)} icon={ClipboardList} tone="slate" />
           </div>
           <div className="bg-white border border-slate-200 rounded-lg overflow-hidden mb-5">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-500 text-left">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Invoice</th><th className="px-4 py-2.5 font-medium">Time</th>
                   <th className="px-4 py-2.5 font-medium">Products</th>
                   <th className="px-4 py-2.5 font-medium">Cashier</th>
-                  <th className="px-4 py-2.5 font-medium">Location</th>
+                  {perms.multiLocation && <th className="px-4 py-2.5 font-medium">Location</th>}
                   <th className="px-4 py-2.5 font-medium">Payment</th>
+                  <th className="px-4 py-2.5 font-medium">Discount</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 font-medium text-right">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {[...salesInRange].reverse().map((s) => (
-                  <tr key={s.id} className="border-t border-slate-100">
-                    <td className="px-4 py-2.5">#{s.number}</td>
-                    <td className="px-4 py-2.5 text-slate-500">{new Date(s.timestamp).toLocaleString()}</td>
-                    <td className="px-4 py-2.5 text-slate-500 max-w-xs truncate" title={s.items.map((i) => `${i.name} (${i.code ?? "-"})`).join(", ")}>
-                      {s.items.map((i) => `${i.name} (${i.code ?? "-"})`).join(", ")}
+                  <tr key={s.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => setViewingSale(s)}
+                        className="font-medium text-emerald-700 hover:underline"
+                        title="View full invoice details"
+                      >
+                        #{s.number}
+                      </button>
                     </td>
-                    <td className="px-4 py-2.5">{s.cashierName}</td>
-                    <td className="px-4 py-2.5 text-slate-500">{appState.locations.find((l) => l.id === s.locationId)?.name ?? "-"}</td>
-                    <td className="px-4 py-2.5 text-slate-500">{s.payment}</td>
+                    <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap" title={new Date(s.timestamp).toLocaleString()}>
+                      {fmtDateTime(s.timestamp)}
+                    </td>
+                    <td
+                      className="px-4 py-2.5 text-slate-500 max-w-[10rem] truncate"
+                      title={s.items.map((i) => `${i.name} (${i.code ?? "-"})`).join(", ")}
+                    >
+                      {s.items.map((i) => i.code ?? i.name).join(", ")}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">{s.cashierName}</td>
+                    {perms.multiLocation && (
+                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">
+                        {appState.locations.find((l) => l.id === s.locationId)?.name ?? "-"}
+                      </td>
+                    )}
+                    <td
+                      className="px-4 py-2.5 text-slate-500 whitespace-nowrap"
+                      title={s.payments.map((p) => `${p.method}: ${fmt(p.amount)}`).join(", ")}
+                    >
+                      {s.payments.length > 1
+                        ? s.payments.map((p) => p.method).join(" + ")
+                        : (s.payments[0]?.method ?? "-")}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500" title={s.discount?.reason ?? undefined}>
+                      {s.discount ? (
+                        <span>
+                          -{fmt(s.discount.amount)}
+                          {s.discount.type === "percent" ? ` (${s.discount.value}%)` : ""}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       {s.status === "returned" && <Badge tone="rose">Returned</Badge>}
                       {s.status === "partially_returned" && <Badge tone="amber">Partial return</Badge>}
@@ -161,9 +202,10 @@ export function ReportsView({
                     </td>
                   </tr>
                 ))}
-                {salesInRange.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No sales match your filters.</td></tr>}
+                {salesInRange.length === 0 && <tr><td colSpan={perms.multiLocation ? 9 : 8} className="px-4 py-8 text-center text-slate-400">No sales match your filters.</td></tr>}
               </tbody>
             </table>
+            </div>
           </div>
           {perms.canViewAllSales && Object.keys(byCashier).length > 0 && (
             <div className="bg-white border border-slate-200 rounded-lg p-4 max-w-md">
@@ -182,6 +224,7 @@ export function ReportsView({
         <>
           <div className="mb-4"><StatCard label="Total stock value (at cost)" value={fmt(stockValue)} icon={Boxes} /></div>
           <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-500 text-left">
                 <tr>
@@ -200,12 +243,14 @@ export function ReportsView({
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
 
       {tab === "low" && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-left">
               <tr>
@@ -225,11 +270,13 @@ export function ReportsView({
               {lowStock.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400">Nothing is low on stock right now.</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {tab === "purchases" && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-left">
               <tr>
@@ -249,7 +296,15 @@ export function ReportsView({
               {visiblePurchases.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400">No purchases recorded yet.</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
+      )}
+      {viewingSale && (
+        <SaleDetailModal
+          sale={viewingSale}
+          locationName={appState.locations.find((l) => l.id === viewingSale.locationId)?.name ?? "-"}
+          onClose={() => setViewingSale(null)}
+        />
       )}
     </div>
   );

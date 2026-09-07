@@ -83,6 +83,24 @@ export type SaleStatus = "completed" | "returned" | "partially_returned";
 
 export type ReturnReason = "Customer return" | "Wrong item sold" | "Damaged / faulty" | "Other";
 
+export type DiscountType = "amount" | "percent";
+
+export interface SaleDiscount {
+  /** Whether the entered value is a flat KES amount or a percentage of the subtotal. */
+  type: DiscountType;
+  /** The raw number the cashier entered (e.g. 10 for "10%", or 50 for "KES 50 off"). */
+  value: number;
+  /** The actual KES amount deducted, already computed and clamped to the subtotal. */
+  amount: number;
+  reason?: string;
+}
+
+/** One method+amount pair. A sale can be paid with more than one of these (a split payment). */
+export interface PaymentLine {
+  method: string;
+  amount: number;
+}
+
 export interface Sale {
   id: string;
   number: number;
@@ -91,8 +109,12 @@ export interface Sale {
   cashierName: string;
   locationId: string;
   items: SaleItem[];
+  /** Sum of line totals before any discount. */
+  subtotal: number;
+  discount: SaleDiscount | null;
+  /** Final amount due after discount - what the payments below must add up to. */
   total: number;
-  payment: string;
+  payments: PaymentLine[];
   status: SaleStatus;
   /** Cumulative amount refunded so far across one or more return transactions. */
   refundedTotal?: number;

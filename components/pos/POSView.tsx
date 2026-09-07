@@ -1,10 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Check, Printer, RotateCcw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Plus, Printer, RotateCcw, Search, Trash2 } from "lucide-react";
 import { Badge, Field, Modal, btnPrimary, btnSecondary, inputCls } from "./ui";
 import { fmt, fmtQty, genId } from "@/lib/pos-constants";
-import type { AppState, Product, ReturnReason, RolePermissions, Sale, SaleItem, Session, UpdateFn } from "@/types/pos";
+import type {
+  AppState, DiscountType, PaymentLine, Product, ReturnReason, RolePermissions, Sale, SaleItem, Session, UpdateFn,
+} from "@/types/pos";
+
+const PAYMENT_METHODS = ["Cash", "M-Pesa", "Card", "Bank transfer"];
 
 function ReceiptPrintable({ sale, locationName }: { sale: Sale | null; locationName: string }) {
   if (!sale) return <div id="receipt-print-area" className="hidden print:block" />;
@@ -27,8 +31,17 @@ function ReceiptPrintable({ sale, locationName }: { sale: Sale | null; locationN
           </div>
         ))}
       </div>
+      <div className="flex justify-between"><span>Subtotal</span><span>{fmt(sale.subtotal)}</span></div>
+      {sale.discount && (
+        <div className="flex justify-between">
+          <span>Discount{sale.discount.type === "percent" ? ` (${sale.discount.value}%)` : ""}</span>
+          <span>-{fmt(sale.discount.amount)}</span>
+        </div>
+      )}
       <div className="flex justify-between font-bold"><span>TOTAL</span><span>{fmt(sale.total)}</span></div>
-      <div className="flex justify-between"><span>Payment</span><span>{sale.payment}</span></div>
+      {sale.payments.map((p, i) => (
+        <div key={i} className="flex justify-between"><span>{p.method}</span><span>{fmt(p.amount)}</span></div>
+      ))}
       <div className="mt-2 text-center border border-black p-2">
         eTIMS: awaiting KRA connection.<br />No tax-compliant QR yet - see Settings.
       </div>
@@ -48,12 +61,52 @@ export function POSView({
 }) {
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<SaleItem[]>([]);
-  const [payment, setPayment] = useState("Cash");
   const [error, setError] = useState("");
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [showReturn, setShowReturn] = useState(false);
+
+  // Discount (optional, applies to the whole sale)
+  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [discountType, setDiscountType] = useState<DiscountType>("amount");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+
+  // Payment - either one method for the full amount, or a split across several
+  const [splitPayment, setSplitPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("Cash");
+  const [splitLines, setSplitLines] = useState<PaymentLine[]>([
+    { method: "Cash", amount: 0 },
+    { method: "M-Pesa", amount: 0 },
+  ]);
+
   const locId = session.locationId;
   const locationName = appState.locations.find((l) => l.id === locId)?.name ?? "";
+
+  const subtotal = cart.reduce((s, c) => s + c.qty * c.price, 0);
+  const rawDiscount = discountEnabled ? (parseFloat(discountValue) || 0) : 0;
+  const discountAmount = Math.min(
+    Math.max(discountType === "percent" ? subtotal * (rawDiscount / 100) : rawDiscount, 0),
+    subtotal
+  );
+  const totalDue = subtotal - discountAmount;
+
+  const splitTotal = splitLines.reduce((s, l) => s + (l.amount || 0), 0);
+  const splitRemaining = totalDue - splitTotal;
+
+  const setSplitLine = (i: number, patch: Partial<PaymentLine>) =>
+    setSplitLines((lines) => lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const addSplitLine = () => setSplitLines((lines) => [...lines, { method: "Cash", amount: 0 }]);
+  const removeSplitLine = (i: number) => setSplitLines((lines) => lines.filter((_, idx) => idx !== i));
+
+  const resetCheckoutExtras = () => {
+    setDiscountEnabled(false);
+    setDiscountType("amount");
+    setDiscountValue("");
+    setDiscountReason("");
+    setSplitPayment(false);
+    setPaymentMethod("Cash");
+    setSplitLines([{ method: "Cash", amount: 0 }, { method: "M-Pesa", amount: 0 }]);
+  };
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -86,8 +139,6 @@ export function POSView({
   };
   const removeLine = (productId: string) => setCart((prev) => prev.filter((c) => c.productId !== productId));
 
-  const total = cart.reduce((s, c) => s + c.qty * c.price, 0);
-
   const checkout = () => {
     setError("");
     if (cart.length === 0) return;
@@ -102,6 +153,26 @@ export function POSView({
         return;
       }
     }
+
+    let payments: PaymentLine[];
+    if (splitPayment) {
+      payments = splitLines.filter((l) => l.amount > 0);
+      if (payments.length === 0) {
+        setError("Enter at least one payment amount.");
+        return;
+      }
+      if (Math.abs(splitRemaining) > 0.01) {
+        setError(
+          splitRemaining > 0
+            ? `Payments are short by ${fmt(splitRemaining)}. They must add up to ${fmt(totalDue)}.`
+            : `Payments are ${fmt(-splitRemaining)} over. They must add up to ${fmt(totalDue)}.`
+        );
+        return;
+      }
+    } else {
+      payments = [{ method: paymentMethod, amount: totalDue }];
+    }
+
     let createdSale: Sale | null = null;
     update((prev) => {
       const invoiceNo = prev.nextInvoiceNo;
@@ -118,8 +189,12 @@ export function POSView({
         cashierName: session.userName,
         locationId: locId,
         items: cart.map((c) => ({ ...c, lineTotal: c.qty * c.price })),
-        total,
-        payment,
+        subtotal,
+        discount: discountEnabled && discountAmount > 0
+          ? { type: discountType, value: rawDiscount, amount: discountAmount, reason: discountReason.trim() || undefined }
+          : null,
+        total: totalDue,
+        payments,
         status: "completed",
         refundedTotal: 0,
       };
@@ -138,7 +213,7 @@ export function POSView({
     });
     if (createdSale) setLastSale(createdSale);
     setCart([]);
-    setPayment("Cash");
+    resetCheckoutExtras();
   };
 
   const printReceipt = () => window.print();
@@ -237,20 +312,113 @@ export function POSView({
               <AlertTriangle size={13} /> {error}
             </div>
           )}
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-500 text-sm">Total</span>
-            <span className="text-2xl font-semibold text-slate-800">{fmt(total)}</span>
+
+          {!discountEnabled ? (
+            <button onClick={() => setDiscountEnabled(true)} className="text-xs text-emerald-700 hover:underline mb-3">
+              + Add discount
+            </button>
+          ) : (
+            <div className="mb-3 bg-slate-50 rounded-md p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-slate-600">Discount</span>
+                <button
+                  onClick={() => { setDiscountEnabled(false); setDiscountValue(""); setDiscountReason(""); }}
+                  className="text-xs text-slate-400 hover:text-rose-500"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="flex gap-2 mb-2">
+                <select
+                  className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                  value={discountType}
+                  onChange={(e) => setDiscountType(e.target.value as DiscountType)}
+                >
+                  <option value="amount">KES</option>
+                  <option value="percent">%</option>
+                </select>
+                <input
+                  type="number" step="any" min="0"
+                  placeholder={discountType === "percent" ? "e.g. 10" : "e.g. 50"}
+                  className="flex-1 border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                />
+              </div>
+              <input
+                type="text"
+                placeholder="Reason (optional) - e.g. loyal customer, bulk buy"
+                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                value={discountReason}
+                onChange={(e) => setDiscountReason(e.target.value)}
+              />
+            </div>
+          )}
+
+          <div className="space-y-1 mb-3">
+            <div className="flex justify-between text-sm text-slate-500">
+              <span>Subtotal</span><span>{fmt(subtotal)}</span>
+            </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-rose-600">
+                <span>Discount{discountType === "percent" ? ` (${discountValue}%)` : ""}</span>
+                <span>-{fmt(discountAmount)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-slate-500 text-sm">Total due</span>
+              <span className="text-2xl font-semibold text-slate-800">{fmt(totalDue)}</span>
+            </div>
           </div>
-          <Field label="Payment method">
-            <select className={inputCls} value={payment} onChange={(e) => setPayment(e.target.value)}>
-              <option>Cash</option>
-              <option>M-Pesa</option>
-              <option>Card</option>
-              <option>Bank transfer</option>
+
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-sm text-slate-600">Payment</span>
+            <button onClick={() => setSplitPayment((s) => !s)} className="text-xs text-emerald-700 hover:underline">
+              {splitPayment ? "Use one method" : "Split payment"}
+            </button>
+          </div>
+
+          {!splitPayment ? (
+            <select className={`${inputCls} mb-2`} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
             </select>
-          </Field>
+          ) : (
+            <div className="space-y-2 mb-2">
+              {splitLines.map((l, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <select
+                    className="flex-1 border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                    value={l.method}
+                    onChange={(e) => setSplitLine(i, { method: e.target.value })}
+                  >
+                    {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
+                  </select>
+                  <input
+                    type="number" step="any" min="0" placeholder="Amount"
+                    className="w-24 border border-slate-300 rounded-md px-2 py-1.5 text-sm text-right"
+                    value={l.amount || ""}
+                    onChange={(e) => setSplitLine(i, { amount: parseFloat(e.target.value) || 0 })}
+                  />
+                  <button onClick={() => removeSplitLine(i)} className="text-slate-300 hover:text-rose-500">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              <button onClick={addSplitLine} className="text-xs text-emerald-700 flex items-center gap-1">
+                <Plus size={12} /> Add payment method
+              </button>
+              <div className={`text-xs ${Math.abs(splitRemaining) < 0.01 ? "text-emerald-600" : "text-amber-600"}`}>
+                {Math.abs(splitRemaining) < 0.01
+                  ? "Fully covered."
+                  : splitRemaining > 0
+                    ? `${fmt(splitRemaining)} remaining.`
+                    : `${fmt(-splitRemaining)} over - reduce an amount.`}
+              </div>
+            </div>
+          )}
+
           <button onClick={checkout} disabled={cart.length === 0} className={`${btnPrimary} w-full`}>
-            Charge {fmt(total)}
+            Charge {fmt(totalDue)}
           </button>
           {lastSale && (
             <button onClick={printReceipt} className={`${btnSecondary} w-full mt-2 flex items-center justify-center gap-1.5`}>

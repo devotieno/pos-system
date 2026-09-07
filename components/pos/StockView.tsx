@@ -146,6 +146,7 @@ export function StockView({
 
       {tab === "log" && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-left">
               <tr>
@@ -178,6 +179,7 @@ export function StockView({
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
