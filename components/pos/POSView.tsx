@@ -221,208 +221,203 @@ export function POSView({
   return (
     <div className="flex-1 flex overflow-hidden">
       <ReceiptPrintable sale={lastSale} locationName={locationName} />
-      <div className="flex-1 flex flex-col p-6 overflow-y-auto print:hidden">
-        <div className="relative mb-4">
-          <Search size={16} className="absolute left-3 top-3 text-slate-400" />
-          <input
-            className={`${inputCls} pl-9`}
-            placeholder="Search by product code or name..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            autoFocus
-          />
-          {results.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden">
-              {results.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-emerald-50 text-left border-b border-slate-100 last:border-0"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-slate-800">{p.name}</div>
-                    <div className="text-xs text-slate-400">{p.code} &middot; {fmt(p.sellPrice)} / {p.unit}</div>
-                  </div>
-                  <Badge tone={stockOf(p) <= p.lowStockThreshold ? "amber" : "slate"}>
-                    {fmtQty(stockOf(p))} {p.unit}
-                  </Badge>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {appState.products.slice(0, 12).map((p) => (
-            <button
-              key={p.id}
-              onClick={() => addToCart(p)}
-              className="text-left bg-white border border-slate-200 rounded-lg p-3 hover:border-emerald-400 hover:shadow-sm transition"
-            >
-              <div className="text-sm font-medium text-slate-800 truncate">{p.name}</div>
-              <div className="text-xs text-slate-400 mb-1">{p.code}</div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-emerald-700">{fmt(p.sellPrice)}</span>
-                <span className="text-xs text-slate-400">/{p.unit}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {perms.canReturn && (
-          <button onClick={() => setShowReturn(true)} className={`${btnSecondary} mt-6 self-start flex items-center gap-1.5`}>
-            <RotateCcw size={14} /> Process a return / refund
-          </button>
-        )}
-      </div>
-
-      <div className="w-96 shrink-0 bg-white border-l border-slate-200 flex flex-col print:hidden">
-        <div className="px-5 py-4 border-b border-slate-200">
-          <h2 className="font-semibold text-slate-800">Current sale</h2>
-          <p className="text-xs text-slate-400">{locationName}</p>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          {cart.length === 0 && (
-            <p className="text-sm text-slate-400 mt-6 text-center">Cart is empty. Search or tap a product to add it.</p>
-          )}
-          {cart.map((c) => (
-            <div key={c.productId} className="flex items-center gap-2 py-2 border-b border-slate-100">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-slate-800 truncate">{c.name}</div>
-                <div className="text-xs text-slate-400">{fmt(c.price)} / {c.unit}</div>
-              </div>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={c.qty}
-                onChange={(e) => setQty(c.productId, parseFloat(e.target.value) || 0)}
-                className="w-16 border border-slate-300 rounded px-1.5 py-1 text-sm text-right"
-              />
-              <div className="w-20 text-right text-sm font-medium">{fmt(c.qty * c.price)}</div>
-              <button onClick={() => removeLine(c.productId)} className="text-slate-300 hover:text-rose-500">
-                <Trash2 size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-slate-200 px-5 py-4">
-          {error && (
-            <div className="bg-rose-50 text-rose-700 text-xs rounded-md px-3 py-2 mb-3 flex items-center gap-1.5">
-              <AlertTriangle size={13} /> {error}
-            </div>
-          )}
-
-          {!discountEnabled ? (
-            <button onClick={() => setDiscountEnabled(true)} className="text-xs text-emerald-700 hover:underline mb-3">
-              + Add discount
-            </button>
-          ) : (
-            <div className="mb-3 bg-slate-50 rounded-md p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-slate-600">Discount</span>
-                <button
-                  onClick={() => { setDiscountEnabled(false); setDiscountValue(""); setDiscountReason(""); }}
-                  className="text-xs text-slate-400 hover:text-rose-500"
-                >
-                  Remove
-                </button>
-              </div>
-              <div className="flex gap-2 mb-2">
-                <select
-                  className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                  value={discountType}
-                  onChange={(e) => setDiscountType(e.target.value as DiscountType)}
-                >
-                  <option value="amount">KES</option>
-                  <option value="percent">%</option>
-                </select>
-                <input
-                  type="number" step="any" min="0"
-                  placeholder={discountType === "percent" ? "e.g. 10" : "e.g. 50"}
-                  className="flex-1 border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                  value={discountValue}
-                  onChange={(e) => setDiscountValue(e.target.value)}
-                />
-              </div>
-              <input
-                type="text"
-                placeholder="Reason (optional) - e.g. loyal customer, bulk buy"
-                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                value={discountReason}
-                onChange={(e) => setDiscountReason(e.target.value)}
-              />
-            </div>
-          )}
-
-          <div className="space-y-1 mb-3">
-            <div className="flex justify-between text-sm text-slate-500">
-              <span>Subtotal</span><span>{fmt(subtotal)}</span>
-            </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-sm text-rose-600">
-                <span>Discount{discountType === "percent" ? ` (${discountValue}%)` : ""}</span>
-                <span>-{fmt(discountAmount)}</span>
+      <div className="flex-1 flex justify-center overflow-hidden print:hidden p-6">
+        <div className="w-full max-w-5xl flex flex-col min-h-0">
+          <div className="relative mb-4 shrink-0">
+            <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+            <input
+              className={`${inputCls} pl-9`}
+              placeholder="Search by product code or name..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+            />
+            {results.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden">
+                {results.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => addToCart(p)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-emerald-50 text-left border-b border-slate-100 last:border-0"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-slate-800">{p.name}</div>
+                      <div className="text-xs text-slate-400">{p.code} &middot; {fmt(p.sellPrice)} / {p.unit}</div>
+                    </div>
+                    <Badge tone={stockOf(p) <= p.lowStockThreshold ? "amber" : "slate"}>
+                      {fmtQty(stockOf(p))} {p.unit}
+                    </Badge>
+                  </button>
+                ))}
               </div>
             )}
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-slate-500 text-sm">Total due</span>
-              <span className="text-2xl font-semibold text-slate-800">{fmt(totalDue)}</span>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 shrink-0">
+              <h2 className="font-semibold text-slate-800">Current sale</h2>
+              <p className="text-xs text-slate-400">{locationName}</p>
             </div>
-          </div>
-
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-sm text-slate-600">Payment</span>
-            <button onClick={() => setSplitPayment((s) => !s)} className="text-xs text-emerald-700 hover:underline">
-              {splitPayment ? "Use one method" : "Split payment"}
-            </button>
-          </div>
-
-          {!splitPayment ? (
-            <select className={`${inputCls} mb-2`} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-              {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
-            </select>
-          ) : (
-            <div className="space-y-2 mb-2">
-              {splitLines.map((l, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <select
-                    className="flex-1 border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                    value={l.method}
-                    onChange={(e) => setSplitLine(i, { method: e.target.value })}
-                  >
-                    {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
-                  </select>
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3">
+              {cart.length === 0 && (
+                <p className="text-sm text-slate-400 mt-6 text-center">Cart is empty. Search for a product above to add it.</p>
+              )}
+              {cart.map((c) => (
+                <div key={c.productId} className="flex items-center gap-2 py-2 border-b border-slate-100">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-800 truncate">{c.name}</div>
+                    <div className="text-xs text-slate-400">{fmt(c.price)} / {c.unit}</div>
+                  </div>
                   <input
-                    type="number" step="any" min="0" placeholder="Amount"
-                    className="w-24 border border-slate-300 rounded-md px-2 py-1.5 text-sm text-right"
-                    value={l.amount || ""}
-                    onChange={(e) => setSplitLine(i, { amount: parseFloat(e.target.value) || 0 })}
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={c.qty}
+                    onChange={(e) => setQty(c.productId, parseFloat(e.target.value) || 0)}
+                    className="w-16 border border-slate-300 rounded px-1.5 py-1 text-sm text-right"
                   />
-                  <button onClick={() => removeSplitLine(i)} className="text-slate-300 hover:text-rose-500">
-                    <Trash2 size={14} />
+                  <div className="w-20 text-right text-sm font-medium">{fmt(c.qty * c.price)}</div>
+                  <button onClick={() => removeLine(c.productId)} className="text-slate-300 hover:text-rose-500">
+                    <Trash2 size={15} />
                   </button>
                 </div>
               ))}
-              <button onClick={addSplitLine} className="text-xs text-emerald-700 flex items-center gap-1">
-                <Plus size={12} /> Add payment method
-              </button>
-              <div className={`text-xs ${Math.abs(splitRemaining) < 0.01 ? "text-emerald-600" : "text-amber-600"}`}>
-                {Math.abs(splitRemaining) < 0.01
-                  ? "Fully covered."
-                  : splitRemaining > 0
-                    ? `${fmt(splitRemaining)} remaining.`
-                    : `${fmt(-splitRemaining)} over - reduce an amount.`}
+            </div>
+            <div className="border-t border-slate-200 px-5 py-4 shrink-0">
+              {error && (
+                <div className="bg-rose-50 text-rose-700 text-xs rounded-md px-3 py-2 mb-3 flex items-center gap-1.5">
+                  <AlertTriangle size={13} /> {error}
+                </div>
+              )}
+
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+                <div>
+                  {!discountEnabled ? (
+                    <button onClick={() => setDiscountEnabled(true)} className="text-xs text-emerald-700 hover:underline mb-3">
+                      + Add discount
+                    </button>
+                  ) : (
+                    <div className="mb-3 bg-slate-50 rounded-md p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-slate-600">Discount</span>
+                        <button
+                          onClick={() => { setDiscountEnabled(false); setDiscountValue(""); setDiscountReason(""); }}
+                          className="text-xs text-slate-400 hover:text-rose-500"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="flex gap-2 mb-2">
+                        <select
+                          className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                          value={discountType}
+                          onChange={(e) => setDiscountType(e.target.value as DiscountType)}
+                        >
+                          <option value="amount">KES</option>
+                          <option value="percent">%</option>
+                        </select>
+                        <input
+                          type="number" step="any" min="0"
+                          placeholder={discountType === "percent" ? "e.g. 10" : "e.g. 50"}
+                          className="flex-1 border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                          value={discountValue}
+                          onChange={(e) => setDiscountValue(e.target.value)}
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Reason (optional) - e.g. loyal customer, bulk buy"
+                        className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                        value={discountReason}
+                        onChange={(e) => setDiscountReason(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm text-slate-500">
+                      <span>Subtotal</span><span>{fmt(subtotal)}</span>
+                    </div>
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-sm text-rose-600">
+                        <span>Discount{discountType === "percent" ? ` (${discountValue}%)` : ""}</span>
+                        <span>-{fmt(discountAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-slate-500 text-sm">Total due</span>
+                      <span className="text-2xl font-semibold text-slate-800">{fmt(totalDue)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm text-slate-600">Payment</span>
+                    <button onClick={() => setSplitPayment((s) => !s)} className="text-xs text-emerald-700 hover:underline">
+                      {splitPayment ? "Use one method" : "Split payment"}
+                    </button>
+                  </div>
+
+                  {!splitPayment ? (
+                    <select className={`${inputCls} mb-2`} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                      {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
+                    </select>
+                  ) : (
+                    <div className="space-y-2 mb-2">
+                      {splitLines.map((l, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <select
+                            className="flex-1 border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                            value={l.method}
+                            onChange={(e) => setSplitLine(i, { method: e.target.value })}
+                          >
+                            {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
+                          </select>
+                          <input
+                            type="number" step="any" min="0" placeholder="Amount"
+                            className="w-24 border border-slate-300 rounded-md px-2 py-1.5 text-sm text-right"
+                            value={l.amount || ""}
+                            onChange={(e) => setSplitLine(i, { amount: parseFloat(e.target.value) || 0 })}
+                          />
+                          <button onClick={() => removeSplitLine(i)} className="text-slate-300 hover:text-rose-500">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      <button onClick={addSplitLine} className="text-xs text-emerald-700 flex items-center gap-1">
+                        <Plus size={12} /> Add payment method
+                      </button>
+                      <div className={`text-xs ${Math.abs(splitRemaining) < 0.01 ? "text-emerald-600" : "text-amber-600"}`}>
+                        {Math.abs(splitRemaining) < 0.01
+                          ? "Fully covered."
+                          : splitRemaining > 0
+                            ? `${fmt(splitRemaining)} remaining.`
+                            : `${fmt(-splitRemaining)} over - reduce an amount.`}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={checkout}
+                    disabled={cart.length === 0}
+                    className={`${btnPrimary} w-full`}
+                  >
+                    Charge {fmt(totalDue)}
+                  </button>
+                  {lastSale && (
+                    <button onClick={printReceipt} className={`${btnSecondary} w-full mt-2 flex items-center justify-center gap-1.5`}>
+                      <Printer size={14} /> Print last receipt (#{lastSale.number})
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          )}
+          </div>
 
-          <button onClick={checkout} disabled={cart.length === 0} className={`${btnPrimary} w-full`}>
-            Charge {fmt(totalDue)}
-          </button>
-          {lastSale && (
-            <button onClick={printReceipt} className={`${btnSecondary} w-full mt-2 flex items-center justify-center gap-1.5`}>
-              <Printer size={14} /> Print last receipt (#{lastSale.number})
+          {perms.canReturn && (
+            <button onClick={() => setShowReturn(true)} className={`${btnSecondary} mt-4 self-start shrink-0 flex items-center gap-1.5`}>
+              <RotateCcw size={14} /> Process a return / refund
             </button>
           )}
         </div>
