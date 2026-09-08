@@ -73,7 +73,7 @@ function ProductModal({
           </div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-x-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Product code">
           <input
             className={inputCls}
@@ -108,7 +108,7 @@ function ProductModal({
       </div>
       <div className="mt-2 mb-4">
         <span className="block text-sm text-slate-600 mb-2">Opening stock by location</span>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {locations.map((l) => (
             <Field key={l.id} label={l.name}>
               <input type="number" step="any" className={inputCls} value={form.stock[l.id] || 0}
@@ -327,18 +327,18 @@ export function InventoryView({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="relative w-80">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div className="relative w-full sm:w-80">
           <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
           <input className={`${inputCls} pl-9`} placeholder="Search products..." value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between sm:justify-end gap-3">
           <span className="text-sm text-slate-500">
             Stock value (visible): <span className="font-semibold text-slate-800">{fmt(totalStockValue)}</span>
           </span>
           {perms.canEditInventory && (
-            <button onClick={() => setEditing("new")} className={`${btnPrimary} flex items-center gap-1.5`}>
+            <button onClick={() => setEditing("new")} className={`${btnPrimary} flex items-center gap-1.5 shrink-0`}>
               <Plus size={15} /> Add product
             </button>
           )}

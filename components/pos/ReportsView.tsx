@@ -80,8 +80,8 @@ export function ReportsView({
   );
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="flex gap-2 mb-4">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex flex-wrap gap-2 mb-4">
         {tabBtn("sales", perms.canViewAllSales ? "Sales" : "My sales")}
         {perms.canViewAllSales && tabBtn("stock", "Current stock")}
         {perms.canViewAllSales && tabBtn("low", "Low stock")}
@@ -124,7 +124,7 @@ export function ReportsView({
               </select>
             </Field>
           </div>
-          <div className="grid grid-cols-3 gap-4 mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
             <StatCard label="Revenue" value={fmt(revenue)} icon={TrendingUp} />
             <StatCard label="Transactions" value={salesInRange.length} icon={ShoppingCart} tone="slate" />
             <StatCard label="Avg. sale" value={fmt(salesInRange.length ? revenue / salesInRange.length : 0)} icon={ClipboardList} tone="slate" />

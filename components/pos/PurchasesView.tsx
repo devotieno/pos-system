@@ -54,7 +54,7 @@ function NewProductModal({
         automatically - the quantity and unit cost you enter for the line will set its opening stock and cost price.
       </p>
       {error && <div className="bg-rose-50 text-rose-700 text-sm rounded-md px-3 py-2 mb-3">{error}</div>}
-      <div className="grid grid-cols-2 gap-x-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Product code"><input className={inputCls} value={form.code} onChange={(e) => set("code", e.target.value)} /></Field>
         <Field label="Name"><input className={inputCls} value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="Selling unit">
@@ -173,8 +173,8 @@ export function PurchasesView({
     : appState.purchases.filter((p) => p.locationId === session.locationId);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 className="font-semibold text-slate-800">Purchase history</h2>
         <button onClick={() => setShowForm(true)} className={`${btnPrimary} flex items-center gap-1.5`}>
           <Plus size={15} /> Record goods received
@@ -217,7 +217,7 @@ export function PurchasesView({
       {showForm && (
         <Modal title="Record goods received" onClose={() => setShowForm(false)} wide>
           {error && <div className="bg-rose-50 text-rose-700 text-sm rounded-md px-3 py-2 mb-3">{error}</div>}
-          <div className="grid grid-cols-2 gap-4 mb-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
             <Field label="Supplier">
               <input className={inputCls} value={supplier} onChange={(e) => setSupplier(e.target.value)} />
             </Field>

@@ -64,6 +64,7 @@ export default function PosApp() {
 
   const [view, setView] = useState<ViewKey | null>(null);
   const [reportsInitialTab, setReportsInitialTab] = useState<"sales" | "stock" | "low" | "purchases">("sales");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Once we know the signed-in user's role, land them on the first screen they're allowed to see.
   useEffect(() => {
@@ -126,12 +127,15 @@ export default function PosApp() {
         session={session}
         saveError={saveError}
         onLogout={() => signOut(getFirebaseAuth())}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <TopBar
           title={meta.title}
           subtitle={meta.subtitle}
           locationName={view !== "settings" && view !== "users" ? locationName : null}
+          onMenuClick={() => setSidebarOpen(true)}
           right={
             <LowStockBell
               appState={state}

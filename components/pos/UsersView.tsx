@@ -168,8 +168,8 @@ export function UsersView({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="flex justify-between mb-4">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="font-semibold text-slate-800">Staff accounts</h2>
           {!perms.canManageAllUsers && (
@@ -178,7 +178,7 @@ export function UsersView({
             </p>
           )}
         </div>
-        <button onClick={() => setEditing("new")} className={`${btnPrimary} flex items-center gap-1.5 shrink-0`}>
+        <button onClick={() => setEditing("new")} className={`${btnPrimary} flex items-center gap-1.5 shrink-0 self-start sm:self-auto`}>
           <Plus size={15} /> Add user
         </button>
       </div>

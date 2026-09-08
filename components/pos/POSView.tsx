@@ -221,7 +221,7 @@ export function POSView({
   return (
     <div className="flex-1 flex overflow-hidden">
       <ReceiptPrintable sale={lastSale} locationName={locationName} />
-      <div className="flex-1 flex justify-center overflow-hidden print:hidden p-6">
+      <div className="flex-1 flex justify-center overflow-hidden print:hidden p-4 sm:p-6">
         <div className="w-full max-w-5xl flex flex-col min-h-0">
           <div className="relative mb-4 shrink-0">
             <Search size={16} className="absolute left-3 top-3 text-slate-400" />

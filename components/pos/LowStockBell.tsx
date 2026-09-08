@@ -51,7 +51,7 @@ export function LowStockBell({
         <>
           {/* Click-away layer */}
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-96 overflow-y-auto">
+          <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-80 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-96 overflow-y-auto">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white">
               <h3 className="text-sm font-semibold text-slate-800">Low stock alerts</h3>
               <span className="text-xs text-slate-400">{count} item{count === 1 ? "" : "s"}</span>
